@@ -1,6 +1,6 @@
 # Nandi Development-Earmarked Intelligence
 
-A transparent Streamlit pipeline for discovering public documents, extracting tables/text, normalizing project records, classifying sectors, and aggregating development-earmarked amounts by sector and financial year (FY 2013–FY 2026).
+A transparent Streamlit pipeline for discovering public documents, extracting annual budget-cycle tables/text, and producing normalized records with the three core fields: **project name**, **allocated amount**, and **sector**. It aggregates development-earmarked amounts by sector and financial year (FY 2013–FY 2026).
 
 ## Run
 
@@ -11,7 +11,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Use **Add URLs** for public PDFs/DOCX/text files or **Upload files** for local documents. The application never marks a document as successfully extracted when the parser returns no usable text; review flags and source provenance remain attached to every record. Rows with explicit recurrent/operational wording are excluded from development totals, while ambiguous rows remain included and retain review metadata.
+Use **Add URLs** for public PDFs/DOCX/text files or select multiple annual files in **Upload ADPs for multiple financial years**. Each file is processed once per session, retains its filename/source provenance, and contributes to the combined FY-by-sector summary. Budget tables with headers such as `Project Name`, `Sector`, `Allocated Budget`, and `Financial Year` are mapped by header rather than fixed column position. If a row has no year, the parser also checks the annual document filename/title. The application never marks a document as successfully extracted when the parser returns no usable text; review flags and source provenance remain attached to every record. Rows with explicit recurrent/operational wording are excluded from development totals, while ambiguous rows remain included and retain review metadata.
 
 ## Configuration
 

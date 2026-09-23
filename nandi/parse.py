@@ -19,12 +19,44 @@ def parse_fy(value):
     match = FY_RE.search(str(value or ""))
     return int(match.group(1)) if match else None
 
-def _row_record(row, doc, classify, start=2013, end=2026):
+def _header_map(row):
+    aliases = {
+        "project": ("project", "programme", "program", "activity", "description", "intervention"),
+        "amount": ("allocation", "allocated", "budget", "amount", "cost", "estimate", "provision"),
+        "sector": ("sector", "department", "directorate", "sub-sector", "subsector"),
+        "fy": ("financial year", "fiscal year", "fy", "year"),
+    }
+    mapped = {}
+    for index, value in enumerate(row):
+        label = re.sub(r"[^a-z0-9 ]", " ", str(value or "").lower())
+        label = re.sub(r"\s+", " ", label).strip()
+        for field, names in aliases.items():
+            if any(name == label or name in label for name in names):
+                mapped[field] = index
+                break
+    return mapped
+
+def _row_record(row, doc, classify, start=2013, end=2026, columns=None):
     values = [str(x).strip() for x in row if x is not None]
     joined = " | ".join(values)
-    fy = parse_fy(joined)
-    amount = parse_amount(joined)
-    project = next((x for x in values if len(x) > 4 and not parse_fy(x) and parse_amount(x) is None), "")
+    columns = columns or {}
+    project = values[columns["project"]] if "project" in columns and columns["project"] < len(values) else ""
+    amount_cell = values[columns["amount"]] if "amount" in columns and columns["amount"] < len(values) else ""
+    fy_cell = values[columns["fy"]] if "fy" in columns and columns["fy"] < len(values) else ""
+    sector_cell = values[columns["sector"]] if "sector" in columns and columns["sector"] < len(values) else ""
+    fy = parse_fy(fy_cell or joined) or parse_fy(doc.source)
+    amount = parse_amount(amount_cell) if amount_cell else None
+    if amount is None:
+        # Prefer currency/unit-marked cells, then the largest numeric cell.
+        candidates = [parse_amount(x) for x in values if re.search(
+            r"(?:kes|ksh|million|billion|\b(?:bn|m|k)\b)", x, re.I)]
+        if candidates:
+            amount = candidates[0]
+        else:
+            numeric = [parse_amount(x) for x in values if parse_amount(x) is not None and not parse_fy(x)]
+            amount = max(numeric) if numeric else None
+    if not project:
+        project = next((x for x in values if len(x) > 4 and not parse_fy(x) and parse_amount(x) is None), "")
     flags = []
     if not project: flags.append("missing_project_name")
     if amount is None: flags.append("missing_or_unparseable_amount")
@@ -36,7 +68,10 @@ def _row_record(row, doc, classify, start=2013, end=2026):
         flags.append("recurrent_or_operational_wording")
     elif re.search(r"\b(development|capital|infrastructure|project)\b", lowered):
         development_earmarked = True
-    sector, confidence, provenance = classify(project + " " + joined)
+    if sector_cell and sector_cell.lower() not in {"sector", "n/a", "na", "-"}:
+        sector, confidence, provenance = sector_cell, 1.0, ["explicit_sector_column"]
+    else:
+        sector, confidence, provenance = classify(project + " " + joined)
     if confidence < 0.6: flags.append("low_sector_confidence")
     return ProjectRecord(project or "Unidentified project", amount, fy, sector, doc.source, doc.url,
                          confidence, provenance, flags, {"values": values}, development_earmarked)
@@ -44,8 +79,10 @@ def _row_record(row, doc, classify, start=2013, end=2026):
 def parse_document(doc: DocumentResult, classify, start=2013, end=2026):
     records = []
     for table in doc.tables:
-        for row in table:
-            if row: records.append(_row_record(row, doc, classify, start, end))
+        columns = _header_map(table[0]) if table else {}
+        start_row = 1 if len(columns) >= 2 else 0
+        for row in table[start_row:]:
+            if row: records.append(_row_record(row, doc, classify, start, end, columns))
     if not records:
         for line in doc.text.splitlines():
             if parse_amount(line) is not None or parse_fy(line) is not None:

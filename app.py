@@ -1,4 +1,5 @@
 import io
+import hashlib
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -12,7 +13,7 @@ from nandi.aggregate import aggregate
 
 st.set_page_config(page_title="Nandi Development Intelligence", layout="wide")
 st.title("Nandi Development-Earmarked Intelligence")
-st.caption("Evidence-first document discovery, extraction, classification and FY 2013–2026 aggregation.")
+st.caption("Extracts project name, allocated amount and sector from annual budget-cycle ADPs, with evidence and review flags.")
 
 try:
     config = load_config(st.sidebar.text_input("Config path", "config.yaml"))
@@ -23,13 +24,20 @@ classifier = make_classifier(config.get("sector_rules"))
 
 if "records" not in st.session_state:
     st.session_state.records, st.session_state.docs = [], []
+    st.session_state.processed_uploads = set()
+st.session_state.setdefault("processed_uploads", set())
 
 with st.sidebar:
     st.header("Sources")
     pasted = st.text_area("URLs (one per line or pasted text)")
-    uploaded = st.file_uploader("Upload PDF, DOCX, HTML or text", accept_multiple_files=True,
+    uploaded = st.file_uploader("Upload ADPs for multiple financial years", accept_multiple_files=True,
                                 type=["pdf", "docx", "txt", "csv", "html", "htm"])
+    st.caption("Select several annual ADPs at once; the year is read from each table or filename.")
     discover = st.button("Process sources", type="primary")
+    if st.button("Clear processed records"):
+        st.session_state.records, st.session_state.docs = [], []
+        st.session_state.processed_uploads = set()
+        st.rerun()
 
 if discover:
     docs = []
@@ -59,11 +67,21 @@ if discover:
         if result.status == "extracted":
             st.session_state.records.extend(parse_document(result, classifier, start, end))
         status.write(f"{'✅' if result.status == 'extracted' else '⚠️'} {source.name}: {result.status}")
+    upload_count = 0
     for file in uploaded or []:
-        result = extract_bytes(file.getvalue(), file.name, f"upload://{file.name}", file.type or "")
+        data = file.getvalue()
+        fingerprint = hashlib.sha256(data).hexdigest()
+        if fingerprint in st.session_state.processed_uploads:
+            continue
+        upload_count += 1
+        st.session_state.processed_uploads.add(fingerprint)
+        result = extract_bytes(data, file.name, f"upload://{file.name}", file.type or "")
         st.session_state.docs.append(result)
         if result.status == "extracted":
             st.session_state.records.extend(parse_document(result, classifier, start, end))
+        status.write(f"{'✅' if result.status == 'extracted' else '⚠️'} {file.name}: {result.status}")
+    if upload_count:
+        status.write(f"Processed {upload_count} uploaded ADP file(s) across available financial years.")
     status.update(label="Processing complete", state="complete")
 
 frame, summary = aggregate(st.session_state.records, start, end)
