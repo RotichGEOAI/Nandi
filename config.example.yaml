@@ -1,0 +1,13 @@
+fiscal_year_start: 2013
+fiscal_year_end: 2026
+request_timeout_seconds: 30
+sources:
+  - name: Example planning document
+    url: https://example.org/plans.pdf
+    sector_hint: general
+sector_rules:
+  agriculture: [agriculture, irrigation, livestock, food security]
+  education: [school, education, classroom, bursary]
+  health: [hospital, clinic, health, medical]
+  water: [water, borehole, sanitation, sewer]
+  roads: [road, bridge, transport, access road]
